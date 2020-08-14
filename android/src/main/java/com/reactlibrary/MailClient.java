@@ -2,9 +2,6 @@ package com.reactlibrary;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
-import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContextBaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableArray;
@@ -14,6 +11,7 @@ import com.facebook.react.bridge.ReadableMapKeySetIterator;
 
 import com.libmailcore.AbstractPart;
 import com.libmailcore.Attachment;
+import com.libmailcore.IMAPAppendMessageOperation;
 import com.libmailcore.IMAPFolderStatusOperation;
 import com.libmailcore.IMAPPart;
 import com.libmailcore.IMAPSearchExpression;
@@ -37,8 +35,6 @@ import com.libmailcore.IMAPFetchParsedContentOperation;
 import com.libmailcore.IMAPFolder;
 import com.libmailcore.MessageFlag;
 import com.libmailcore.IMAPSearchOperation;
-import com.libmailcore.IMAPFetchMessagesOperation;
-import com.libmailcore.IMAPFetchParsedContentOperation;
 import com.libmailcore.MessageParser;
 import com.libmailcore.IMAPMessage;
 
@@ -50,25 +46,18 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 
 import java.io.InputStream;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Arrays;
 import java.util.ListIterator;
-import java.util.Map;
 
 import android.app.Activity;
 import android.content.ContentResolver;
 import android.net.Uri;
 import android.util.Base64;
 
-import static com.libmailcore.IMAPMessagesRequestKind.IMAPMessagesRequestKindFlags;
-import static com.libmailcore.IMAPMessagesRequestKind.IMAPMessagesRequestKindHeaderSubject;
-import static com.libmailcore.IMAPMessagesRequestKind.IMAPMessagesRequestKindHeaders;
-import static com.libmailcore.IMAPMessagesRequestKind.IMAPMessagesRequestKindInternalDate;
-import static com.libmailcore.IMAPMessagesRequestKind.IMAPMessagesRequestKindStructure;
+import androidx.core.util.Consumer;
 
 public class MailClient {
 
@@ -1051,4 +1040,153 @@ public class MailClient {
         promise.resolve(result);
     }
 
+    public void appendMessage(final ReadableMap paramsMap, final Promise promise, final Activity currentActivity) {
+        buildMessage(
+            paramsMap.getMap("mail"),
+            currentActivity.getContentResolver()
+        ).processResult(new Consumer<MessageBuilder>() {
+            @Override
+            public void accept(MessageBuilder messageBuilder) {
+                String folder = paramsMap.getString("folder");
+                final IMAPAppendMessageOperation imapAppendMessageOperation = imapSession.appendMessageOperation(folder, messageBuilder.data(), MessageFlag.MessageFlagDraft);
+                currentActivity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        imapAppendMessageOperation.start(new OperationCallback() {
+                            @Override
+                            public void succeeded() {
+                                WritableMap result = Arguments.createMap();
+                                result.putString("status", "SUCCESS");
+                                result.putString("id", Long.toString(imapAppendMessageOperation.createdUID()));
+                                promise.resolve(result);
+                            }
+                            @Override
+                            public void failed(MailException e) {
+                                promise.reject(String.valueOf(e.errorCode()), e.getMessage());
+                            }
+                        });
+                    }
+                });
+            }
+        }, new Consumer<ErrorData>() {
+            @Override
+            public void accept(ErrorData errorData) {
+                promise.reject(errorData.getCode(), errorData.getMessage());
+            }
+        });
+    }
+
+    private BuildMessageResult buildMessage(ReadableMap mailMap, ContentResolver contentResolver) {
+        final MessageBuilder messageBuilder = new MessageBuilder();
+
+        messageBuilder.setHeader(getMessageHeader(mailMap));
+
+        if (mailMap.hasKey("body")) {
+            messageBuilder.setHTMLBody(mailMap.getString("body"));
+        }
+
+        if (mailMap.hasKey("attachments")) {
+            ReadableArray attachments = mailMap.getArray("attachments");
+            for (int i = 0; i < attachments.size(); i++) {
+                ReadableMap attachment = attachments.getMap(i);
+
+                if (attachment.getString("uniqueId") != null)
+                    continue;
+
+                String pathName = attachment.getString("uri");
+                String fileName = attachment.getString("filename");
+                File file = new File(pathName);
+                try {
+                    long size;
+                    InputStream buf;
+                    Uri uri = Uri.parse(pathName);
+                    if (uri.getScheme().equals("content")) {
+                        buf = contentResolver.openInputStream(uri);
+                        size = contentResolver.openFileDescriptor(uri, "r").getStatSize();
+                    } else {
+                        buf = new BufferedInputStream(new FileInputStream(file));
+                        size = file.length();
+                    }
+                    byte[] bytes = new byte[(int) size];
+                    buf.read(bytes, 0, bytes.length);
+                    buf.close();
+                    messageBuilder.addAttachment(Attachment.attachmentWithData(fileName, bytes));
+                } catch (IOException e) {
+                    return BuildMessageResult.failed("Attachments", e.getMessage());
+                }
+            }
+        }
+
+        return BuildMessageResult.success(messageBuilder);
+    }
+
+    private MessageHeader getMessageHeader(ReadableMap obj) {
+        MessageHeader messageHeader = new MessageHeader();
+        if (obj.hasKey("headers")) {
+            ReadableMap headerObj = obj.getMap("headers");
+            ReadableMapKeySetIterator headerIterator = headerObj.keySetIterator();
+            while (headerIterator.hasNextKey()) {
+                String header = headerIterator.nextKey();
+                String headerValue = headerObj.getString(header);
+                messageHeader.setExtraHeader(header, headerValue);
+            }
+        }
+
+        ReadableMap fromObj = obj.getMap("from");
+        final Address fromAddress = new Address();
+        fromAddress.setDisplayName(fromObj.getString("addressWithDisplayName"));
+        fromAddress.setMailbox(fromObj.getString("mailbox"));
+        messageHeader.setFrom(fromAddress);
+
+        ReadableMap toObj = obj.getMap("to");
+        ReadableMapKeySetIterator iterator = toObj.keySetIterator();
+        ArrayList<Address> toAddressList = new ArrayList();
+        while (iterator.hasNextKey()) {
+            String toMail = iterator.nextKey();
+            String toName = toObj.getString(toMail);
+            Address toAddress = new Address();
+            toAddress.setDisplayName(toName);
+            toAddress.setMailbox(toMail);
+            toAddressList.add(toAddress);
+        }
+
+        messageHeader.setTo(toAddressList);
+
+        ArrayList<Address> ccAddressList = new ArrayList();
+        if (obj.hasKey("cc")) {
+            ReadableMap ccObj = obj.getMap("cc");
+            iterator = ccObj.keySetIterator();
+            while (iterator.hasNextKey()) {
+                String ccMail = iterator.nextKey();
+                String ccName = ccObj.getString(ccMail);
+                Address ccAddress = new Address();
+                ccAddress.setDisplayName(ccName);
+                ccAddress.setMailbox(ccMail);
+                ccAddressList.add(ccAddress);
+            }
+            messageHeader.setCc(ccAddressList);
+        }
+
+        ArrayList<Address> bccAddressList = new ArrayList();
+        if (obj.hasKey("bcc")) {
+            ReadableMap bccObj = obj.getMap("bcc");
+            iterator = bccObj.keySetIterator();
+            while (iterator.hasNextKey()) {
+                String bccMail = iterator.nextKey();
+                String bccName = bccObj.getString(bccMail);
+                Address bccAddress = new Address();
+                bccAddress.setDisplayName(bccName);
+                bccAddress.setMailbox(bccMail);
+                bccAddressList.add(bccAddress);
+            }
+            messageHeader.setBcc(bccAddressList);
+        }
+
+        if (obj.hasKey("subject")) {
+            messageHeader.setSubject(obj.getString("subject"));
+        }
+
+        return messageHeader;
+    }
 }
+

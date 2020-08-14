@@ -210,4 +210,9 @@ public class RNMailCoreModule extends ReactContextBaseJavaModule {
     });
   }
 
+  @ReactMethod
+  public void appendMessage(final ReadableMap obj, final Promise promise) {
+    mailClient.appendMessage(obj, promise, getCurrentActivity());
+  }
+
 }
