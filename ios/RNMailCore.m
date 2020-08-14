@@ -883,6 +883,80 @@ RCT_EXPORT_METHOD(getMailsByThread:(NSDictionary *)obj resolver:(RCTPromiseResol
     }
 }
 
+RCT_EXPORT_METHOD(appendMessage:(NSDictionary *)obj resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    NSDictionary *mailMap = [RCTConvert NSDictionary:obj[@"mail"]];
+    MCOMessageBuilder *messageBuilder = [[MCOMessageBuilder alloc] init];
+    if([mailMap objectForKey:@"headers"]) {
+        NSDictionary *headerObj = [RCTConvert NSDictionary:mailMap[@"headers"]];
+        for(id key in headerObj) {
+            [[messageBuilder header] setExtraHeaderValue:[headerObj objectForKey:key] forName:key];
+        }
+    }
+    
+    NSDictionary *fromObj = [RCTConvert NSDictionary:mailMap[@"from"]];
+    [[messageBuilder header] setFrom:[MCOAddress addressWithDisplayName:[fromObj objectForKey:@"addressWithDisplayName"] mailbox:[fromObj objectForKey:@"mailbox"]]];
+    
+    NSDictionary *toObj = [RCTConvert NSDictionary:mailMap[@"to"]];
+    NSMutableArray *toArray = [[NSMutableArray alloc] init];
+    for(id toKey in toObj) {
+        [toArray addObject:[MCOAddress addressWithDisplayName:[toObj objectForKey:toKey] mailbox:toKey]];
+    }
+    [[messageBuilder header] setTo:toArray];
+    
+    if([mailMap objectForKey:@"cc"]) {
+        NSDictionary *ccObj = [RCTConvert NSDictionary:mailMap[@"cc"]];
+        NSMutableArray *ccArray = [[NSMutableArray alloc] init];
+        for(id ccKey in ccObj) {
+            [ccArray addObject:[MCOAddress addressWithDisplayName:[ccObj objectForKey:ccKey] mailbox:ccKey]];
+        }
+        [[messageBuilder header] setCc:ccArray];
+    }
+    
+    if([mailMap objectForKey:@"bcc"]) {
+        NSDictionary *bccObj = [RCTConvert NSDictionary:mailMap[@"bcc"]];
+        NSMutableArray *bccArray = [[NSMutableArray alloc] init];
+        for(id bccKey in bccObj) {
+            [bccArray addObject:[MCOAddress addressWithDisplayName:[bccObj objectForKey:bccKey] mailbox:bccKey]];
+        }
+        [[messageBuilder header] setBcc:bccArray];
+    }
+    
+    if([mailMap objectForKey:@"subject"]) {
+        [[messageBuilder header] setSubject:[RCTConvert NSString:mailMap[@"subject"]]];
+    }
+    
+    if([mailMap objectForKey:@"body"]) {
+        [messageBuilder setHTMLBody:[RCTConvert NSString:mailMap[@"body"]]];
+    }
+    
+    if([mailMap objectForKey:@"attachments"]) {
+        NSArray *attachmentObj = [RCTConvert NSArray:mailMap[@"attachments"]];
+        for(id attachment in attachmentObj) {
+            if ([attachment objectForKey:@"uniqueId"])
+                continue;
+            
+            NSURL *documentsURL = [NSURL URLWithString:attachment[@"uri"]];
+            NSData *fileData = [NSData dataWithContentsOfURL:documentsURL];
+            MCOAttachment *attach = [MCOAttachment attachmentWithData:fileData filename:attachment[@"filename"]];
+            [messageBuilder addAttachment:attach];
+        }
+    }
+    
+    NSString *folder = [RCTConvert NSString:obj[@"folder"]];
+    MCOIMAPAppendMessageOperation *sendOperation = [_imapSession appendMessageOperationWithFolder:folder messageData:[messageBuilder data] flags:MCOMessageFlagDraft];
+    [sendOperation start:^(NSError * error, uint32_t createdUID) {
+      if (error == nil) {
+          NSLog(@"created message with UID %lu", (unsigned long) createdUID);
+          NSDictionary *result = @{@"status": @"SUCCESS"};
+          resolve(result);
+      } else {
+          reject(@"Error", error.localizedDescription, error);
+      }
+    }];
+}
+
 
 - (instancetype)initSmtp:(MCOSMTPSession *)smtpObject {
     self = [super init];
