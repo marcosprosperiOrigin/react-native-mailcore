@@ -371,6 +371,10 @@ RCT_EXPORT_METHOD(getMail:(NSDictionary *)obj resolver:(RCTPromiseResolveBlock)r
     unsigned long long valueUInt64 = messageId.unsignedLongLongValue;
     MCOIndexSet *uid = [MCOIndexSet indexSetWithIndex:valueUInt64];
     int requestKind = [RCTConvert int:obj[@"requestKind"]];
+
+    // Setup dateFormat
+    NSDateFormatter *dateFormat = [[NSDateFormatter alloc] init];
+    [dateFormat setDateFormat:@"yyyy-MM-dd HH:mm:ss zzz"];
     
     MCOIMAPFetchMessagesOperation *fetchOperation = [_imapSession fetchMessagesOperationWithFolder:folder requestKind:requestKind uids:uid];
     
@@ -390,7 +394,7 @@ RCT_EXPORT_METHOD(getMail:(NSDictionary *)obj resolver:(RCTPromiseResolveBlock)r
              [result setValue:messageUid forKey:@"id"];
              int flags = message.flags;
              [result setObject:[NSString stringWithFormat:@"%d",flags] forKey:@"flags"];
-             //mailData.putString("date", message.header().date().toString());
+             [result setObject:[dateFormat stringFromDate:message.header.date] forKey:@"date"];
              
              NSMutableDictionary *fromData = [[NSMutableDictionary alloc] init];
              [fromData setValue:message.header.from.mailbox forKey:@"mailbox"];
@@ -863,7 +867,7 @@ RCT_EXPORT_METHOD(getMailsByThread:(NSDictionary *)obj resolver:(RCTPromiseResol
             [mail setObject:[NSString stringWithFormat:@"%d",[message uid]] forKey:@"id"];
             [mail setObject:[NSString stringWithFormat:@"%d",(int)message.flags] forKey:@"flags"];
             [mail setObject:message.header.from.displayName ? : @"" forKey:@"from"];
-            [mail setObject:message.header.subject forKey:@"subject"];
+            [mail setObject:message.header.subject ? : @"" forKey:@"subject"];
             [mail setObject:[dateFormat stringFromDate:message.header.date] forKey:@"date"];
             if (message.attachments != nil) {
                 [mail setObject:[NSString stringWithFormat:@"%lu", message.attachments.count] forKey:@"attachments"];
@@ -898,12 +902,14 @@ RCT_EXPORT_METHOD(appendMessage:(NSDictionary *)obj resolver:(RCTPromiseResolveB
     NSDictionary *fromObj = [RCTConvert NSDictionary:mailMap[@"from"]];
     [[messageBuilder header] setFrom:[MCOAddress addressWithDisplayName:[fromObj objectForKey:@"addressWithDisplayName"] mailbox:[fromObj objectForKey:@"mailbox"]]];
     
-    NSDictionary *toObj = [RCTConvert NSDictionary:mailMap[@"to"]];
-    NSMutableArray *toArray = [[NSMutableArray alloc] init];
-    for(id toKey in toObj) {
-        [toArray addObject:[MCOAddress addressWithDisplayName:[toObj objectForKey:toKey] mailbox:toKey]];
+    if([mailMap objectForKey:@"to"]) {
+        NSDictionary *toObj = [RCTConvert NSDictionary:mailMap[@"to"]];
+        NSMutableArray *toArray = [[NSMutableArray alloc] init];
+        for(id toKey in toObj) {
+            [toArray addObject:[MCOAddress addressWithDisplayName:[toObj objectForKey:toKey] mailbox:toKey]];
+        }
+        [[messageBuilder header] setTo:toArray];
     }
-    [[messageBuilder header] setTo:toArray];
     
     if([mailMap objectForKey:@"cc"]) {
         NSDictionary *ccObj = [RCTConvert NSDictionary:mailMap[@"cc"]];
@@ -934,9 +940,6 @@ RCT_EXPORT_METHOD(appendMessage:(NSDictionary *)obj resolver:(RCTPromiseResolveB
     if([mailMap objectForKey:@"attachments"]) {
         NSArray *attachmentObj = [RCTConvert NSArray:mailMap[@"attachments"]];
         for(id attachment in attachmentObj) {
-            if ([attachment objectForKey:@"uniqueId"])
-                continue;
-            
             NSURL *documentsURL = [NSURL URLWithString:attachment[@"uri"]];
             NSData *fileData = [NSData dataWithContentsOfURL:documentsURL];
             MCOAttachment *attach = [MCOAttachment attachmentWithData:fileData filename:attachment[@"filename"]];
@@ -949,7 +952,8 @@ RCT_EXPORT_METHOD(appendMessage:(NSDictionary *)obj resolver:(RCTPromiseResolveB
     [sendOperation start:^(NSError * error, uint32_t createdUID) {
       if (error == nil) {
           NSLog(@"created message with UID %lu", (unsigned long) createdUID);
-          NSDictionary *result = @{@"status": @"SUCCESS"};
+          NSNumber *mailUID = [NSNumber numberWithUnsignedLong:createdUID];
+          NSDictionary *result = @{@"status": @"SUCCESS",@"id": [mailUID stringValue]};
           resolve(result);
       } else {
           reject(@"Error", error.localizedDescription, error);

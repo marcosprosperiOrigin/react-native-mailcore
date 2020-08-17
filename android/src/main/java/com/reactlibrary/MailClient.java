@@ -1138,24 +1138,26 @@ public class MailClient {
         fromAddress.setMailbox(fromObj.getString("mailbox"));
         messageHeader.setFrom(fromAddress);
 
-        ReadableMap toObj = obj.getMap("to");
-        ReadableMapKeySetIterator iterator = toObj.keySetIterator();
-        ArrayList<Address> toAddressList = new ArrayList();
-        while (iterator.hasNextKey()) {
-            String toMail = iterator.nextKey();
-            String toName = toObj.getString(toMail);
-            Address toAddress = new Address();
-            toAddress.setDisplayName(toName);
-            toAddress.setMailbox(toMail);
-            toAddressList.add(toAddress);
+        if (obj.hasKey("to")) {
+            ArrayList<Address> toAddressList = new ArrayList();
+            ReadableMap toObj = obj.getMap("to");
+            ReadableMapKeySetIterator iterator = toObj.keySetIterator();
+            while (iterator.hasNextKey()) {
+                String toMail = iterator.nextKey();
+                String toName = toObj.getString(toMail);
+                Address toAddress = new Address();
+                toAddress.setDisplayName(toName);
+                toAddress.setMailbox(toMail);
+                toAddressList.add(toAddress);
+            }
+            messageHeader.setTo(toAddressList);
         }
 
-        messageHeader.setTo(toAddressList);
 
-        ArrayList<Address> ccAddressList = new ArrayList();
         if (obj.hasKey("cc")) {
+            ArrayList<Address> ccAddressList = new ArrayList();
             ReadableMap ccObj = obj.getMap("cc");
-            iterator = ccObj.keySetIterator();
+            ReadableMapKeySetIterator iterator = ccObj.keySetIterator();
             while (iterator.hasNextKey()) {
                 String ccMail = iterator.nextKey();
                 String ccName = ccObj.getString(ccMail);
@@ -1167,10 +1169,10 @@ public class MailClient {
             messageHeader.setCc(ccAddressList);
         }
 
-        ArrayList<Address> bccAddressList = new ArrayList();
         if (obj.hasKey("bcc")) {
+            ArrayList<Address> bccAddressList = new ArrayList();
             ReadableMap bccObj = obj.getMap("bcc");
-            iterator = bccObj.keySetIterator();
+            ReadableMapKeySetIterator iterator = bccObj.keySetIterator();
             while (iterator.hasNextKey()) {
                 String bccMail = iterator.nextKey();
                 String bccName = bccObj.getString(bccMail);
