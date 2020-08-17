@@ -321,12 +321,8 @@ RCT_EXPORT_METHOD(sendMail:(NSDictionary *)obj resolver:(RCTPromiseResolveBlock)
             MCOMessageParser * parser = [MCOMessageParser messageParserWithData:messageData];
             
             if (is_existing_draft) {
-                if (parser.header.inReplyTo) {
-                    messageBuilder.header.inReplyTo = parser.header.inReplyTo;
-                }
-                if (messageBuilder.header.references) {
-                    messageBuilder.header.references = parser.header.references;
-                }
+                messageBuilder.header.inReplyTo = parser.header.inReplyTo;
+                messageBuilder.header.references = parser.header.references;
             } else {
                 // https://github.com/MailCore/mailcore2/blob/master/src/core/abstract/MCMessageHeader.cpp#L1197
                 if (parser.header.messageID) {
@@ -966,12 +962,8 @@ RCT_EXPORT_METHOD(appendMessage:(NSDictionary *)obj resolver:(RCTPromiseResolveB
             MCOMessageParser * parser = [MCOMessageParser messageParserWithData:messageData];
             
             if (is_existing_draft) {
-                if (parser.header.inReplyTo) {
-                    messageBuilder.header.inReplyTo = parser.header.inReplyTo;
-                }
-                if (messageBuilder.header.references) {
-                    messageBuilder.header.references = parser.header.references;
-                }
+                messageBuilder.header.inReplyTo = parser.header.inReplyTo;
+                messageBuilder.header.references = parser.header.references;
             } else {
                 // https://github.com/MailCore/mailcore2/blob/master/src/core/abstract/MCMessageHeader.cpp#L1197
                 if (parser.header.messageID) {
