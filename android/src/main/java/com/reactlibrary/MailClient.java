@@ -220,9 +220,6 @@ public class MailClient {
 
                     buf.read(bytes, 0, bytes.length);
                     buf.close();
-//                    WritableMap result = Arguments.createMap();
-//                    result.putString("status", bytes.toString());
-//                    promise.resolve(result);
                     messageBuilder.addAttachment(Attachment.attachmentWithData(fileName, bytes));
                 } catch (FileNotFoundException e) {
                     promise.reject("Attachments", e.getMessage());
