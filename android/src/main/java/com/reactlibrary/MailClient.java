@@ -378,13 +378,15 @@ public class MailClient {
                         mailData.putInt("flags", message.flags());
                         fromData.putString("displayName", message.header().from().displayName());
                         mailData.putMap("from", fromData);
-                        WritableMap toData = Arguments.createMap();
-                        ListIterator<Address> toIterator = message.header().to().listIterator();
-                        while(toIterator.hasNext()){
-                            Address toAddress = toIterator.next();
-                            toData.putString(toAddress.mailbox(), toAddress.displayName());
+                        if(message.header().to() != null) {
+                            WritableMap toData = Arguments.createMap();
+                            ListIterator<Address> toIterator = message.header().to().listIterator();
+                            while (toIterator.hasNext()) {
+                                Address toAddress = toIterator.next();
+                                toData.putString(toAddress.mailbox(), toAddress.displayName());
+                            }
+                            mailData.putMap("to", toData);
                         }
-                        mailData.putMap("to", toData);
                         if(message.header().cc() != null) {
                             WritableMap ccData = Arguments.createMap();
                             ListIterator<Address> ccIterator = message.header().cc().listIterator();
