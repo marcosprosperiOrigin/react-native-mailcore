@@ -39,6 +39,7 @@ import com.libmailcore.MessageParser;
 import com.libmailcore.IMAPMessage;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -206,18 +207,25 @@ public class MailClient {
                 try {
                     long size = 0;
                     InputStream buf = null;
-                    Uri uri = Uri.parse(pathName);
-                    if (uri.getScheme().equals("content")) {
-                        ContentResolver contentResolver = currentActivity.getContentResolver();
-                        buf = contentResolver.openInputStream(uri);
-                        size = contentResolver.openFileDescriptor(uri, "r").getStatSize();
+
+                    if (attachment.hasKey("data")) {
+                        String base64Data = attachment.getString("data");
+                        byte[] data = Base64.decode(base64Data, Base64.DEFAULT);
+                        buf = new BufferedInputStream(new ByteArrayInputStream(data));
+                        size = data.length;
                     } else {
-                        buf = new BufferedInputStream(new FileInputStream(file));
-                        size = file.length();
+                        Uri uri = Uri.parse(pathName);
+                        if (uri.getScheme().equals("content")) {
+                            ContentResolver contentResolver = currentActivity.getContentResolver();
+                            buf = contentResolver.openInputStream(uri);
+                            size = contentResolver.openFileDescriptor(uri, "r").getStatSize();
+                        } else {
+                            buf = new BufferedInputStream(new FileInputStream(file));
+                            size = file.length();
+                        }
                     }
+
                     byte[] bytes = new byte[(int) size];
-
-
                     buf.read(bytes, 0, bytes.length);
                     buf.close();
                     messageBuilder.addAttachment(Attachment.attachmentWithData(fileName, bytes));
