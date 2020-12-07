@@ -247,6 +247,7 @@ RCT_EXPORT_METHOD(permantDeleteEmail:(NSDictionary *)obj resolver:(RCTPromiseRes
 RCT_EXPORT_METHOD(sendMail:(NSDictionary *)obj resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
+    NSString *sentMailsFolder = [RCTConvert NSString:obj[@"sentMailsFolder"]];
     MCOMessageBuilder *messageBuilder = [[MCOMessageBuilder alloc] init];
     if([obj objectForKey:@"headers"]) {
         NSDictionary *headerObj = [RCTConvert NSDictionary:obj[@"headers"]];
@@ -305,7 +306,7 @@ RCT_EXPORT_METHOD(sendMail:(NSDictionary *)obj resolver:(RCTPromiseResolveBlock)
     }
     
     if([obj objectForKey:@"original_id"] == [NSNull null]) {
-        [self sendEmail:messageBuilder reject:reject resolve:resolve];
+        [self sendEmail:messageBuilder reject:reject resolve:resolve sentMailsFolder:sentMailsFolder];
     } else {
         // this should only occur during a mail forward
         NSNumber *original_id = [RCTConvert NSNumber:obj[@"original_id"]];
@@ -353,7 +354,7 @@ RCT_EXPORT_METHOD(sendMail:(NSDictionary *)obj resolver:(RCTPromiseResolveBlock)
                 }
             }
             
-            [self sendEmail:messageBuilder reject:reject resolve:resolve];
+            [self sendEmail:messageBuilder reject:reject resolve:resolve sentMailsFolder: sentMailsFolder];
         }];
     }
 }
@@ -999,14 +1000,40 @@ RCT_EXPORT_METHOD(appendMessage:(NSDictionary *)obj resolver:(RCTPromiseResolveB
     }
 }
 
-- (void)sendEmail:(MCOMessageBuilder *)messageBuilder reject:(RCTPromiseRejectBlock)reject resolve:(RCTPromiseResolveBlock)resolve {
-    MCOSMTPSendOperation *sendOperation = [_smtpObject sendOperationWithData:[messageBuilder data]];
-    [sendOperation start:^(NSError *error) {
+- (void)sendEmail:(MCOMessageBuilder *)messageBuilder reject:(RCTPromiseRejectBlock)reject resolve:(RCTPromiseResolveBlock)resolve sentMailsFolder:(NSString *)sentMailsFolder {
+    [[_smtpObject sendOperationWithData:[messageBuilder data]] start:^(NSError *error) {
         if(error) {
             reject(@"Error", error.localizedDescription, error);
         } else {
-            NSDictionary *result = @{@"status": @"SUCCESS"};
-            resolve(result);
+            [[_imapSession folderStatusOperation:sentMailsFolder] start:^(NSError * _Nullable error, MCOIMAPFolderStatus * _Nullable status) {
+                if(error) {
+                    reject(@"Error", error.localizedDescription, error);
+                } else {
+                    int messageCount = [[NSNumber numberWithInt:status.messageCount] intValue];
+                    int length = 0;
+                    
+                    // Build operation
+                    MCOIndexSet *fetchRange = [MCOIndexSet indexSetWithRange:MCORangeMake(messageCount, length)];
+                    
+                    // Start operation
+                    [[_imapSession fetchMessagesByNumberOperationWithFolder:sentMailsFolder requestKind:MCOIMAPMessagesRequestKindUid numbers:fetchRange]
+                     start:^(NSError *error, NSArray *messages, MCOIndexSet *vanishedMessages) {
+                        if(error) {
+                            reject(@"Error", error.localizedDescription, error);
+                        } else {
+                            NSMutableArray *ids = [[NSMutableArray alloc] init];
+                            for(MCOIMAPMessage * message in messages) {
+                                [ids addObject:[NSString stringWithFormat:@"%d",[message uid]]];
+                            }
+                            
+                            NSMutableDictionary *result = [[NSMutableDictionary alloc] init];
+                            [result setObject: ids forKey: @"ids"];
+                            [result setObject: @"SUCCESS" forKey: @"status"];
+                            resolve(result);
+                        }
+                    }];
+                }
+            }];
         }
     }];
 }

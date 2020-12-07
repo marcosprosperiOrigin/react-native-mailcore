@@ -13,6 +13,7 @@ import com.libmailcore.AbstractPart;
 import com.libmailcore.Attachment;
 import com.libmailcore.IMAPAppendMessageOperation;
 import com.libmailcore.IMAPFolderStatusOperation;
+import com.libmailcore.IMAPMessagesRequestKind;
 import com.libmailcore.IMAPPart;
 import com.libmailcore.IMAPSearchExpression;
 import com.libmailcore.IndexSet;
@@ -126,6 +127,7 @@ public class MailClient {
     }
 
     public void sendMail(final ReadableMap obj, final Promise promise, final Activity currentActivity) {
+        final String sentMailsFolder = obj.getString("sentMailsFolder");
         MessageHeader messageHeader = new MessageHeader();
         if (obj.hasKey("headers")) {
             ReadableMap headerObj = obj.getMap("headers");
@@ -252,9 +254,41 @@ public class MailClient {
                     smtpOperation.start(new OperationCallback() {
                         @Override
                         public void succeeded() {
-                            WritableMap result = Arguments.createMap();
-                            result.putString("status", "SUCCESS");
-                            promise.resolve(result);
+
+                            final IMAPFolderStatusOperation folderStatusOperation = imapSession.folderStatusOperation(sentMailsFolder);
+                            folderStatusOperation.start(new OperationCallback() {
+                                @Override
+                                public void succeeded() {
+                                    final int messageCount = (int)folderStatusOperation.status().messageCount();
+
+                                    IndexSet indexSet = IndexSet.indexSetWithRange(new Range(messageCount, 0));
+                                    final IMAPFetchMessagesOperation messagesOperation = imapSession.fetchMessagesByNumberOperation(sentMailsFolder, IMAPMessagesRequestKind.IMAPMessagesRequestKindUid, indexSet);
+                                    messagesOperation.start(new OperationCallback() {
+                                        @Override
+                                        public void succeeded() {
+                                            WritableMap result = Arguments.createMap();
+                                            WritableArray ids = Arguments.createArray();
+                                            for (final IMAPMessage message : messagesOperation.messages()) {
+                                                Long messageId = message.uid();
+                                                ids.pushInt(messageId.intValue());
+                                            }
+                                            result.putArray("ids", ids);
+                                            result.putString("status", "SUCCESS");
+                                            promise.resolve(result);
+                                        }
+
+                                        @Override
+                                        public void failed(MailException e) {
+                                            promise.reject(String.valueOf(e.errorCode()), e.getMessage());
+                                        }
+                                    });
+                                }
+
+                                @Override
+                                public void failed(MailException e) {
+                                    promise.reject(String.valueOf(e.errorCode()), e.getMessage());
+                                }
+                            });
                         }
 
                         @Override
@@ -325,9 +359,42 @@ public class MailClient {
                                     smtpOperation.start(new OperationCallback() {
                                         @Override
                                         public void succeeded() {
-                                            WritableMap result = Arguments.createMap();
-                                            result.putString("status", "SUCCESS");
-                                            promise.resolve(result);
+
+                                            final IMAPFolderStatusOperation folderStatusOperation = imapSession.folderStatusOperation(sentMailsFolder);
+                                            folderStatusOperation.start(new OperationCallback() {
+                                                @Override
+                                                public void succeeded() {
+                                                    final int messageCount = (int)folderStatusOperation.status().messageCount();
+
+                                                    IndexSet indexSet = IndexSet.indexSetWithRange(new Range(messageCount, 0));
+                                                    final IMAPFetchMessagesOperation messagesOperation = imapSession.fetchMessagesByNumberOperation(sentMailsFolder, IMAPMessagesRequestKind.IMAPMessagesRequestKindUid, indexSet);
+                                                    messagesOperation.start(new OperationCallback() {
+                                                        @Override
+                                                        public void succeeded() {
+                                                            WritableMap result = Arguments.createMap();
+                                                            WritableArray ids = Arguments.createArray();
+                                                            for (final IMAPMessage message : messagesOperation.messages()) {
+                                                                Long messageId = message.uid();
+                                                                ids.pushInt(messageId.intValue());
+                                                            }
+                                                            result.putArray("ids", ids);
+                                                            result.putString("status", "SUCCESS");
+                                                            promise.resolve(result);
+                                                        }
+
+                                                        @Override
+                                                        public void failed(MailException e) {
+                                                            promise.reject(String.valueOf(e.errorCode()), e.getMessage());
+                                                        }
+                                                    });
+                                                }
+
+                                                @Override
+                                                public void failed(MailException e) {
+                                                    promise.reject(String.valueOf(e.errorCode()), e.getMessage());
+                                                }
+                                            });
+
                                         }
 
                                         @Override
