@@ -911,6 +911,54 @@ public class MailClient {
         });
     }
 
+    public void getMailByMessageID(final ReadableMap obj, final Promise promise) {
+        // Get arguments
+        final String folder = obj.getString("folder");
+        final int requestKind = obj.getInt("requestKind");
+        final Long messageId = Long.parseLong(obj.getString("messageId"));
+
+        // Build operation
+        final IMAPSearchOperation searchOperation = imapSession.searchOperation(
+                folder, IMAPSearchExpression.searchGmailMessageID(messageId));
+
+        // Start searchOperation
+        searchOperation.start(new OperationCallback() {
+            @Override
+            public void succeeded() {
+                // Build operation
+                final IMAPFetchMessagesOperation messagesOperation = imapSession
+                        .fetchMessagesByUIDOperation(folder, requestKind, searchOperation.uids());
+
+                if (obj.hasKey("headers")) {
+                    ReadableArray headersArray = obj.getArray("headers");
+                    List<String> extraHeaders = new ArrayList<>();
+                    for (int i = 0; headersArray.size() > i; i++) {
+                        extraHeaders.add(headersArray.getString(i));
+                    }
+                    messagesOperation.setExtraHeaders(extraHeaders);
+                }
+
+                // Start messagesOperation
+                messagesOperation.start(new OperationCallback() {
+                    @Override
+                    public void succeeded() {
+                        parseMessages(messagesOperation.messages(), promise);
+                    }
+
+                    @Override
+                    public void failed(MailException e) {
+                        promise.reject(String.valueOf(e.errorCode()), e.getMessage());
+                    }
+                });
+
+            }
+            @Override
+            public void failed(MailException e) {
+                promise.reject(String.valueOf(e.errorCode()), e.getMessage());
+            }
+        });
+    }
+
     public void getAttachment(final ReadableMap obj, final Promise promise) {
         final String filename = obj.getString("filename");
         String folderId = obj.getString("folder");
