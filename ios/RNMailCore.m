@@ -691,6 +691,39 @@ RCT_EXPORT_METHOD(getMailsThread:(NSDictionary *)obj resolver:(RCTPromiseResolve
     }];
 }
 
+RCT_EXPORT_METHOD(getMailByMessageID:(NSDictionary *)obj resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    NSString *folder = [RCTConvert NSString:obj[@"folder"]];
+    int requestKind = [RCTConvert int:obj[@"requestKind"]];
+    long messageId = [RCTConvert NSString:obj[@"messageId"]].longLongValue;
+    
+    MCOIMAPSearchOperation *searchOperation = [_imapSession
+                                               searchExpressionOperationWithFolder:folder
+                                               expression:[MCOIMAPSearchExpression searchGmailMessageID:messageId]];
+    
+    [searchOperation start:^(NSError * _Nullable error, MCOIndexSet * _Nullable searchResult) {
+        if(error) {
+            reject(@"Error", error.localizedDescription, error);
+            return;
+        }
+        
+        MCOIMAPFetchMessagesOperation * fetchMessagesFromFolderOperation = [_imapSession
+                                                                            fetchMessagesOperationWithFolder:folder
+                                                                            requestKind:requestKind uids:searchResult];
+        
+        NSArray *extraHeadersRequest = [RCTConvert NSArray:obj[@"headers"]];
+        if (extraHeadersRequest != nil && extraHeadersRequest.count > 0) {
+            [fetchMessagesFromFolderOperation setExtraHeaders:extraHeadersRequest];
+        }
+        
+        [fetchMessagesFromFolderOperation start:^(NSError * error, NSArray * messages, MCOIndexSet * vanishedMessages) {
+            [self parseMessages:error messages:messages reject:reject resolve:resolve];
+        }];
+        
+    }];
+}
+
 RCT_EXPORT_METHOD(getAttachment:(NSDictionary *)obj resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {

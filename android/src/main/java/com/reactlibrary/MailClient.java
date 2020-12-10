@@ -58,6 +58,7 @@ import android.app.Activity;
 import android.content.ContentResolver;
 import android.net.Uri;
 import android.util.Base64;
+import android.util.Log;
 
 import androidx.core.util.Consumer;
 
@@ -80,7 +81,7 @@ public class MailClient {
             imapSession.setPassword(userCredential.getPassword());
         }
         imapSession.setUsername(userCredential.getUsername());
-        
+
         IMAPOperation imapOperation = this.imapSession.checkAccountOperation();
         imapOperation.start(new OperationCallback() {
             @Override
@@ -1136,6 +1137,10 @@ public class MailClient {
         }
 
         for (final IMAPMessage message : messages) {
+            if ((message.flags() & MessageFlag.MessageFlagSubmitted) == MessageFlag.MessageFlagSubmitted) {
+                Log.v("MailClient RNJS", "Ignoring Submitted message found with id: " + message.uid());
+                continue;
+            }
 
             // Process fetched headers from mail
             WritableMap headerData = Arguments.createMap();
