@@ -877,6 +877,9 @@ RCT_EXPORT_METHOD(getMailsByThread:(NSDictionary *)obj resolver:(RCTPromiseResol
         // Process fetched mails
         NSMutableArray *mails = [[NSMutableArray alloc] init];
         for(MCOIMAPMessage * message in messages) {
+            if ((message.flags & MCOMessageFlagSubmitted) == MCOMessageFlagSubmitted) {
+                continue;
+            }
             
             // Process fetched headers from mail
             NSMutableDictionary *headers = [[NSMutableDictionary alloc] init];
